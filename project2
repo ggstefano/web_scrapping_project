@@ -1,0 +1,70 @@
+import requests
+from bs4 import BeautifulSoup
+import pandas
+import argparse
+import sqlite3
+
+def connect(dbname):
+    conn = sqlite3.connect(dbname)
+    conn.execute("CREATE TABLE IF NOT EXISTS SHOPCLUES_TSHIRTS (NAME TXT, PRICE TXT, OLD_PRICE TXT)")
+    print("Table created successfully")
+    conn.close()
+
+def insert_into_table(dbname,values):
+    conn = sqlite3.connect(dbname)
+    print("Inserted into table: "+str(values))
+    conn.execute("INSERT INTO SHOPCLUES_TSHIRTS (NAME, PRICE, OLD_PRICE) VALUES ( ?, ?, ?)",values)
+    conn.commit()
+    conn.close()
+
+def get_info(dbname):
+    conn = sqlite3.connect(dbname)
+    cur= conn.cursor()
+    cur.execute("SELECT * FROM SHOPCLUES_TSHIRTS")
+    table_data = cur.fetchall()
+    for record in table_data:
+        print(record)
+    conn.close()
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--page_no_max",help="Enter the number of pages to parse",type=int)
+parser.add_argument("--dbname",help="Enter the name of db", type=str)
+args= parser.parse_args()
+
+shopclues_url= "https://www.shopclues.com/mens-clothing-t-shirts.html?page="
+max_page=args.page_no_max
+scrapped_info_list=[]
+connect(args.dbname)
+
+for pageno in range(1, max_page+1):
+    print("\n\nGet request for- "+shopclues_url+str(pageno))
+    req= requests.get(shopclues_url+str(pageno))
+    content= req.content
+
+
+    soup = BeautifulSoup(content, "html.parser")
+
+    all_products = soup.find_all("div", {"class" : "col3"})
+
+
+    for product in all_products:
+
+        product_dict= {}
+
+        product_dict["name"]= product.find("span", {"class" : "prod_name"}).text.strip()
+
+        product_dict["price"]= product.find("div", {"class": "ori_price"}).text.strip()
+
+        try:
+            product_dict["old price"]= product.find("div", {"class": "old_prices"}).text.strip()
+        except AttributeError:
+            product_dict["old price"]= None
+
+        scrapped_info_list.append(product_dict)
+        insert_into_table(args.dbname, tuple(product_dict.values()))
+
+print("\n\nCreating csv file.........\n\n")
+dataFrame= pandas.DataFrame(scrapped_info_list)
+dataFrame.to_csv("Shopclues.csv")
+get_info(args.dbname)
+print("\n\nDone!\n\n")
